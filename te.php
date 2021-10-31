@@ -14,11 +14,9 @@ $server->on('connect', function (Server $server, TcpConnection $tcpConnection) {
 
 $server->on('receive', function (Server $server, $msg, TcpConnection $tcpConnection) {
     fprintf(STDOUT, "rev from client: %s \r\n", $msg);
+    $tcpConnection->write2socket('i am server');
 });
 
-$server->listen();
-
-$server->eventLoop();
-
+$server->start();
 
 

@@ -22,6 +22,12 @@ class Server
         $this->_events[$eventName] = $eventCall;
     }
 
+    public function start()
+    {
+        $this->listen();
+        $this->eventLoop();
+    }
+
     public function listen()
     {
         $flags                       = STREAM_SERVER_LISTEN | STREAM_SERVER_BIND;
@@ -37,6 +43,7 @@ class Server
 
         fprintf(STDOUT, "listen on:%s\r\n", $this->_local_socket);
     }
+
 
     public function eventLoop()
     {
@@ -77,7 +84,7 @@ class Server
         }
     }
 
-    public function runEventCallBak($eventName, $args = [])
+    public function runEventCallBack($eventName, $args = [])
     {
         if (isset($this->_events[$eventName]) && is_callable($this->_events[$eventName])) {
             $this->_events[$eventName]($this, ...$args);
@@ -92,7 +99,7 @@ class Server
             $tcpConnection                      = new TcpConnection($connfd, $peername, $this);
             static::$_connections[(int)$connfd] = $tcpConnection;
 
-            $this->runEventCallBak('connect', [$tcpConnection]);
+            $this->runEventCallBack('connect', [$tcpConnection]);
         }
     }
 

@@ -26,9 +26,8 @@ class TcpConnection
         if ($data) {
             /** @var Server $server */
             $server = $this->_server;
-            $server->runEventCallbak('receive', [$data, $this]);
+            $server->runEventCallBack('receive', [$data, $this]);
         }
-        $this->write2socket($data);
     }
 
     public function write2socket($data)
