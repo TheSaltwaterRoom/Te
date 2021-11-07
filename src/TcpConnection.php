@@ -7,6 +7,11 @@ class TcpConnection
     public $_socketFd;
     public $_clientIp;
     public $_server;
+    public $_readBufferSize = 1024;
+
+    public $_recvBufferSize = 1024 * 100;//100kb 表示当前连接接收缓冲区的大小
+    public $_recvLen        = 0;         //表示当前连接目前接收到的字节数大小
+    public $_recvBufferBull = 0;         //表示当前连接接收的字节数是否超出缓冲区
 
     public function __construct($socketFd, $clientIp, $_server)
     {
@@ -22,12 +27,30 @@ class TcpConnection
 
     public function recv4Socket()
     {
-        $data = fread($this->_socketFd, 1024);
+        $data = fread($this->_socketFd, $this->_readBufferSize);
+
+        if ($data === '' || $data === false) {
+            if (feof($this->_socketFd) || !is_resource($this->_socketFd)) {
+                $this->close();
+            }
+        }
+
         if ($data) {
             /** @var Server $server */
             $server = $this->_server;
             $server->runEventCallBack('receive', [$data, $this]);
         }
+    }
+
+    public function close()
+    {
+        if (is_resource($this->_socketFd)) {
+            fclose($this->_socketFd);
+        }
+        /** @var Server $server */
+        $server = $this->_server;
+        $server->runEventCallBack('close', [$this]);
+        $server->onClientLeave($this->_socketFd);
     }
 
     public function write2socket($data)

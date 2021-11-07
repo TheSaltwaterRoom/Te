@@ -17,6 +17,11 @@ $server->on('receive', function (Server $server, $msg, TcpConnection $tcpConnect
     $tcpConnection->write2socket('i am server');
 });
 
+$server->on('close', function (Server $server, TcpConnection $tcpConnection) {
+    $connfd = $tcpConnection->getSocketFd();
+    fprintf(STDOUT, "客户端断开连接了---{$connfd}\r\n");
+});
+
 $server->start();
 
 

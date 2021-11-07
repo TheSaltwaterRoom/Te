@@ -63,9 +63,11 @@ class Server
                     $writeFds[] = $sockfd;
                 }
             }
+            set_error_handler(function () {
+            });
             //null 会阻塞
             $ret = stream_select($readFds, $writeFds, $expFds, null, null);
-
+            restore_error_handler();
             if ($ret === false) {
                 break;
             }
@@ -81,6 +83,13 @@ class Server
                     }
                 }
             }
+        }
+    }
+
+    public function onClientLeave($socketFd)
+    {
+        if (isset(static::$_connections[(int)$socketFd])) {
+            unset(static::$_connections[(int)$socketFd]);
         }
     }
 
