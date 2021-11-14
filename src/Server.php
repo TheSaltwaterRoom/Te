@@ -3,6 +3,7 @@
 namespace Te;
 
 use Closure;
+use Te\Protocols\Stream;
 
 class Server
 {
@@ -12,9 +13,12 @@ class Server
 
     public $_events = [];
 
+    public $_protocol;
+
     public function __construct($local_socket)
     {
         $this->_local_socket = $local_socket;
+        $this->_protocol    = new Stream();
     }
 
     public function on(string $eventName, Closure $eventCall)
