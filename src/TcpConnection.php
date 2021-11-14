@@ -55,15 +55,42 @@ class TcpConnection
         }
     }
 
+    public function handleMessage(): void
+    {
+        $server = $this->_server;
+        if (is_object($server->_protocol) && !is_null($server->_protocol)) {
+            while ($server->_protocol->len($this->_recvBuffer)) {
+                $msgLen            = $server->_protocol->msgLen($this->_recvBuffer);
+                $oneMsg            = substr($this->_recvBuffer, 0, $msgLen);
+                $this->_recvBuffer = substr($this->_recvBuffer, $msgLen);
+                $this->_recvLen    -= $msgLen;
+
+                $msg = $server->_protocol->decode($oneMsg);
+                $server->runEventCallBack('receive', [$msg, $this]);
+            }
+        } else {
+            $server->runEventCallBack('receive', [$this->_recvBuffer, $this]);
+            $this->_recvBuffer = '';
+            $this->_recvLen    = 0;
+        }
+    }
+
     public function send($data)
     {
         $len = strlen($data);
 
-        if ($this->_sendLen + $len < $this->_sendBufferSize) {
-            $bin = $this->_server->_protocol->encode($data);
+        $server = $this->_server;
 
-            $this->_sendLen    += $bin[0];
-            $this->_sendBuffer .= $bin[1];
+        if ($this->_sendLen + $len < $this->_sendBufferSize) {
+            if (is_object($server->_protocol) && !is_null($server->_protocol)) {
+                $bin = $this->_server->_protocol->encode($data);
+
+                $this->_sendLen    += $bin[0];
+                $this->_sendBuffer .= $bin[1];
+            } else {
+                $this->_sendLen    += $len;
+                $this->_sendBuffer .= $data;
+            }
 
             if ($this->_sendLen >= $this->_sendBufferSize) {
                 $this->_sendBufferFull++;
@@ -73,7 +100,11 @@ class TcpConnection
         $writeLen = fwrite($this->_socketFd, $this->_sendBuffer, $this->_sendLen);
 
         if ($this->_sendLen == $writeLen) {
-            return;
+            $this->_sendLen        = 0;
+            $this->_sendBuffer     = '';
+            $this->_sendBufferFull = 0;
+
+            return true;
         } elseif ($writeLen > 0) {
             $this->_sendLen    -= $writeLen;
             $this->_sendBuffer = substr($this->_sendBuffer, $writeLen);
@@ -101,21 +132,5 @@ class TcpConnection
         $bin      = $server->_protocol->encode($data);
         $writeLen = fwrite($this->_socketFd, $bin[1], $bin[0]);
         fprintf(STDOUT, "tcpConnection 我写了 %d 字节", $writeLen);
-    }
-
-    /**
-     */
-    public function handleMessage(): void
-    {
-        /** @var Server $server */
-        $server = $this->_server;
-        while ($server->_protocol->len($this->_recvBuffer)) {
-            $msgLen            = $server->_protocol->msgLen($this->_recvBuffer);
-            $oneMsg            = substr($this->_recvBuffer, 0, $msgLen);
-            $this->_recvBuffer = substr($this->_recvBuffer, $msgLen);
-
-            $msg = $server->_protocol->decode($oneMsg);
-            $server->runEventCallBack('receive', [$msg, $this]);
-        }
     }
 }

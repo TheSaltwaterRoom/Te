@@ -3,7 +3,6 @@
 namespace Te;
 
 use Closure;
-use Te\Protocols\Stream;
 
 class Server
 {
@@ -13,12 +12,24 @@ class Server
 
     public $_events = [];
 
-    public $_protocol;
+    public $_protocol = null;
+    public $_protocol_layout;
+
+    public $_protocols = [
+        'stream' => 'Te\Protocols\Stream',
+        "text"   => "",
+        "ws"     => "",
+        "http"   => "",
+        "mqtt"   => "",
+    ];
 
     public function __construct($local_socket)
     {
-        $this->_local_socket = $local_socket;
-        $this->_protocol    = new Stream();
+        [$protocols, $ip, $port] = explode(':', $local_socket);
+        if (isset($this->_protocols[$protocols])) {
+            $this->_protocol = new $this->_protocols[$protocols]();
+        }
+        $this->_local_socket = 'tcp:' . $ip . ':' . $port;
     }
 
     public function on(string $eventName, Closure $eventCall)
@@ -62,9 +73,11 @@ class Server
                  * @var TcpConnection $tcpConnection
                  */
                 foreach (static::$_connections as $idx => $tcpConnection) {
-                    $sockfd     = $tcpConnection->getSocketFd();
-                    $readFds[]  = $sockfd;
-                    $writeFds[] = $sockfd;
+                    $sockfd = $tcpConnection->getSocketFd();
+                    if (is_resource($sockfd)) {
+                        $readFds[]  = $sockfd;
+                        $writeFds[] = $sockfd;
+                    }
                 }
             }
             set_error_handler(function () {
