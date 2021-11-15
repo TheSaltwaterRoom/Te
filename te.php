@@ -5,7 +5,7 @@ use Te\TcpConnection;
 
 require_once "vendor/autoload.php";
 
-$server = new Server('tcp://127.0.0.1:12345');
+$server = new Server('stream://127.0.0.1:12345');
 
 $server->on('connect', function (Server $server, TcpConnection $tcpConnection) {
     $connfd = $tcpConnection->getSocketFd();
@@ -13,7 +13,7 @@ $server->on('connect', function (Server $server, TcpConnection $tcpConnection) {
 });
 
 $server->on('receive', function (Server $server, $msg, TcpConnection $tcpConnection) {
-    fprintf(STDOUT, "recv from client<%d>:%s\r\n", (int)$tcpConnection->getSocketFd(), $msg);
+//    fprintf(STDOUT, "recv from client<%d>:%s\r\n", (int)$tcpConnection->getSocketFd(), $msg);
 
     $tcpConnection->send('i am server');
 });

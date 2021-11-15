@@ -45,6 +45,7 @@ class TcpConnection
             } else {
                 $this->_recvLen    += strlen($data);
                 $this->_recvBuffer .= $data;
+                $this->_server->onRecv();
             }
         } else {
             $this->_recvBufferBull++;
@@ -64,7 +65,7 @@ class TcpConnection
                 $oneMsg            = substr($this->_recvBuffer, 0, $msgLen);
                 $this->_recvBuffer = substr($this->_recvBuffer, $msgLen);
                 $this->_recvLen    -= $msgLen;
-
+                $server->onMsg();
                 $msg = $server->_protocol->decode($oneMsg);
                 $server->runEventCallBack('receive', [$msg, $this]);
             }

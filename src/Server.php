@@ -15,6 +15,12 @@ class Server
     public $_protocol = null;
     public $_protocol_layout;
 
+    static public $_clientNum = 0;//统计客户端连接数量
+    static public $_recvNum   = 0;//执行recv/fread调用次数
+    static public $_msgNum    = 0;//接收了多少条消息
+
+    public $_startTime = 0;
+
     public $_protocols = [
         'stream' => 'Te\Protocols\Stream',
         "text"   => "",
@@ -29,7 +35,53 @@ class Server
         if (isset($this->_protocols[$protocols])) {
             $this->_protocol = new $this->_protocols[$protocols]();
         }
+        $this->_startTime = time();
+
         $this->_local_socket = 'tcp:' . $ip . ':' . $port;
+    }
+
+    public function onClientJoin()
+    {
+        ++static::$_clientNum;
+    }
+
+    public function onClientLeave($socketFd)
+    {
+        if (isset(static::$_connections[(int)$socketFd])) {
+            unset(static::$_connections[(int)$socketFd]);
+            --static::$_clientNum;
+        }
+    }
+
+    public function onRecv()
+    {
+        ++static::$_recvNum;
+    }
+
+    public function onMsg()
+    {
+        ++static::$_msgNum;
+    }
+
+    public function statistics()
+    {
+        $nowTime          = time();
+        $diffTime         = $nowTime - $this->_startTime;
+        $this->_startTime = $nowTime;
+        if ($diffTime >= 1) {
+            fprintf(
+                STDOUT,
+                "time:<%s>--socket<%d>--<clientNum:%d>--<recvNum:%d>--<msgNum:%d>\r\n",
+                $diffTime,
+                (int)$this->_mainSocket,
+                static::$_clientNum,
+                static::$_recvNum,
+                static::$_msgNum
+            );
+
+            static::$_recvNum = 0;
+            static::$_msgNum  = 0;
+        }
     }
 
     public function on(string $eventName, Closure $eventCall)
@@ -67,6 +119,8 @@ class Server
             $writeFds  = [];
             $expFds    = [];
 
+            $this->statistics();
+
             if (!empty(self::$_connections)) {
                 /**
                  * @var               $idx
@@ -103,13 +157,6 @@ class Server
         }
     }
 
-    public function onClientLeave($socketFd)
-    {
-        if (isset(static::$_connections[(int)$socketFd])) {
-            unset(static::$_connections[(int)$socketFd]);
-        }
-    }
-
     public function runEventCallBack($eventName, $args = [])
     {
         if (isset($this->_events[$eventName]) && is_callable($this->_events[$eventName])) {
@@ -124,7 +171,7 @@ class Server
         if (is_resource($this->_mainSocket)) {
             $tcpConnection                      = new TcpConnection($connfd, $peername, $this);
             static::$_connections[(int)$connfd] = $tcpConnection;
-
+            $this->onClientJoin();
             $this->runEventCallBack('connect', [$tcpConnection]);
         }
     }
