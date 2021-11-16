@@ -55,7 +55,7 @@ class Client
     {
         $bin      = $this->_protocol->encode($data);
         $writeLen = fwrite($this->_mainSocket, $bin[1], $bin[0]);
-        fprintf(STDOUT, "client 我写了:%d字节\n", $writeLen);
+//        fprintf(STDOUT, "client 我写了:%d字节\n", $writeLen);
     }
 
     public function recv4Socket()
@@ -76,6 +76,10 @@ class Client
         }
     }
 
+    public function getSocketFd()
+    {
+        return $this->_mainSocket;
+    }
 
     public function start()
     {
@@ -83,7 +87,6 @@ class Client
 
         if (is_resource($this->_mainSocket)) {
             $this->runEventCallBack('connect');
-            $this->eventLoop();
         } else {
             $this->runEventCallBack('error', [$this, $errno, $errStr]);
             exit(0);
@@ -92,7 +95,7 @@ class Client
 
     public function eventLoop()
     {
-        while (1) {
+        if (is_resource($this->_mainSocket)) {
             $readFds[]  = $this->_mainSocket;
             $writeFds[] = $this->_mainSocket;
             $expFds[]   = $this->_mainSocket;
@@ -100,12 +103,16 @@ class Client
             //null 会阻塞
             $ret = stream_select($readFds, $writeFds, $expFds, null, null);
             if ($ret <= 0 || $ret === false) {
-                break;
+                return false;
             }
 
             if ($readFds) {
                 $this->recv4socket();
             }
+
+            return true;
+        } else {
+            return false;
         }
     }
 

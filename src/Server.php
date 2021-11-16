@@ -98,7 +98,7 @@ class Server
     public function listen()
     {
         $flags                       = STREAM_SERVER_LISTEN | STREAM_SERVER_BIND;
-        $option['socket']['backlog'] = 10;
+        $option['socket']['backlog'] = 102400;//epoll有用，select 【1024】
         $context                     = stream_context_create($option);
         //监听队列
         $this->_mainSocket = stream_socket_server($this->_local_socket, $errno, $errStr, $flags, $context);
@@ -114,11 +114,13 @@ class Server
 
     public function eventLoop()
     {
-        while (1) {
-            $readFds[] = $this->_mainSocket;
-            $writeFds  = [];
-            $expFds    = [];
+        $readFds[] = $this->_mainSocket;
 
+
+        while (1) {
+            $reads    = $readFds;
+            $writeFds = [];
+            $expFds   = [];
             $this->statistics();
 
             if (!empty(self::$_connections)) {
@@ -129,7 +131,7 @@ class Server
                 foreach (static::$_connections as $idx => $tcpConnection) {
                     $sockfd = $tcpConnection->getSocketFd();
                     if (is_resource($sockfd)) {
-                        $readFds[]  = $sockfd;
+                        $reads[]    = $sockfd;
                         $writeFds[] = $sockfd;
                     }
                 }
@@ -137,20 +139,22 @@ class Server
             set_error_handler(function () {
             });
             //null 会阻塞
-            $ret = stream_select($readFds, $writeFds, $expFds, null, null);
+            $ret = stream_select($reads, $writeFds, $expFds, null, null);
             restore_error_handler();
             if ($ret === false) {
                 break;
             }
 
-            if ($readFds) {
-                foreach ($readFds as $fd) {
+            if ($reads) {
+                foreach ($reads as $fd) {
                     if ($fd == $this->_mainSocket) {
                         $this->accept();
                     } else {
-                        /** @var TcpConnection $tcpConnection */
-                        $tcpConnection = static::$_connections[(int)$fd];
-                        $tcpConnection->recv4Socket();
+                        if (isset(static::$_connections[(int)$fd])) {
+                            /** @var TcpConnection $tcpConnection */
+                            $tcpConnection = static::$_connections[(int)$fd];
+                            $tcpConnection->recv4Socket();
+                        }
                     }
                 }
             }

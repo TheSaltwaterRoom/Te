@@ -49,6 +49,7 @@ class TcpConnection
             }
         } else {
             $this->_recvBufferBull++;
+            $this->_server->runEventCallBack('recvBufferBull');
         }
 
         if ($this->_recvLen > 0) {

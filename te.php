@@ -15,7 +15,11 @@ $server->on('connect', function (Server $server, TcpConnection $tcpConnection) {
 $server->on('receive', function (Server $server, $msg, TcpConnection $tcpConnection) {
 //    fprintf(STDOUT, "recv from client<%d>:%s\r\n", (int)$tcpConnection->getSocketFd(), $msg);
 
-    $tcpConnection->send('i am server');
+//    $tcpConnection->send('i am server');
+});
+
+$server->on('recvBufferBull', function (Server $server) {
+    fprintf(STDOUT, "接收缓冲区满了\r\n");
 });
 
 $server->on('close', function (Server $server, TcpConnection $tcpConnection) {
