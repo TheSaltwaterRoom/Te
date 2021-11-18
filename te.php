@@ -15,7 +15,7 @@ $server->on('connect', function (Server $server, TcpConnection $tcpConnection) {
 $server->on('receive', function (Server $server, $msg, TcpConnection $tcpConnection) {
 //    fprintf(STDOUT, "recv from client<%d>:%s\r\n", (int)$tcpConnection->getSocketFd(), $msg);
 
-//    $tcpConnection->send('i am server');
+    $tcpConnection->send('i am server' . time());
 });
 
 $server->on('recvBufferBull', function (Server $server) {

@@ -148,13 +148,22 @@ class Server
             if ($reads) {
                 foreach ($reads as $fd) {
                     if ($fd == $this->_mainSocket) {
-                        $this->accept();
+                        $this->Accept();
                     } else {
+                        /** @var TcpConnection $connection */
                         if (isset(static::$_connections[(int)$fd])) {
-                            /** @var TcpConnection $tcpConnection */
-                            $tcpConnection = static::$_connections[(int)$fd];
-                            $tcpConnection->recv4Socket();
+                            $connection = static::$_connections[(int)$fd];
+                            $connection->recv4socket();
                         }
+                    }
+                }
+            }
+            if ($writeFds) {
+                foreach ($writeFds as $fd) {
+                    if (isset(static::$_connections[(int)$fd])) {
+                        /** @var TcpConnection $connection */
+                        $connection = static::$_connections[(int)$fd];
+                        $connection->write2socket();
                     }
                 }
             }

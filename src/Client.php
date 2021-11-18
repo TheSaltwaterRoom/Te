@@ -25,10 +25,23 @@ class Client
 
     public $_protocol;
 
+    public $_sendNum    = 0;
+    public $_sendMsgNum = 0;
+
     public function __construct($local_socket)
     {
         $this->_localSocket = $local_socket;
         $this->_protocol    = new Stream();
+    }
+
+    public function onSendWrite()
+    {
+        ++$this->_sendNum;
+    }
+
+    public function onSendMsg()
+    {
+        ++$this->_sendMsgNum;
     }
 
     public function on(string $eventName, Closure $eventCall)
@@ -51,11 +64,48 @@ class Client
         $this->runEventCallBack('close');
     }
 
-    public function write2socket($data)
+    public function write2socket()
     {
-        $bin      = $this->_protocol->encode($data);
-        $writeLen = fwrite($this->_mainSocket, $bin[1], $bin[0]);
-//        fprintf(STDOUT, "client 我写了:%d字节\n", $writeLen);
+        if ($this->needWrite()) {
+            $writeLen = fwrite($this->_mainSocket, $this->_sendBuffer, $this->_sendLen);
+            $this->onSendWrite();
+
+            if ($writeLen == $this->_sendLen) {
+                $this->_sendLen        = 0;
+                $this->_sendBuffer     = '';
+                $this->_sendBufferFull = 0;
+
+                return true;
+            } elseif ($writeLen > 0) {
+                $this->_sendLen    -= $writeLen;
+                $this->_sendBuffer = substr($this->_sendBuffer, $writeLen);
+            } else {
+                $this->onClose();
+            }
+        }
+    }
+
+    public function send($data)
+    {
+        $len = strlen($data);
+
+        if ($this->_sendLen + $len < $this->_sendBufferSize) {
+            $bin = $this->_protocol->encode($data);
+
+            $this->_sendLen    += $bin[0];
+            $this->_sendBuffer .= $bin[1];
+
+
+            if ($this->_sendLen >= $this->_sendBufferSize) {
+                $this->_sendBufferFull++;
+            }
+            $this->onSendMsg();
+        }
+    }
+
+    public function needWrite()
+    {
+        return $this->_sendLen > 0;
     }
 
     public function recv4Socket()
@@ -88,7 +138,7 @@ class Client
         if (is_resource($this->_mainSocket)) {
             $this->runEventCallBack('connect');
         } else {
-            $this->runEventCallBack('error', [$this, $errno, $errStr]);
+            $this->runEventCallBack('error', [$errno, $errStr]);
             exit(0);
         }
     }
@@ -96,18 +146,23 @@ class Client
     public function eventLoop()
     {
         if (is_resource($this->_mainSocket)) {
-            $readFds[]  = $this->_mainSocket;
-            $writeFds[] = $this->_mainSocket;
-            $expFds[]   = $this->_mainSocket;
+            $readFds = [$this->_mainSocket];
+            $writeFds = [$this->_mainSocket];
+            $exptFds = [$this->_mainSocket];
+
 
             //null 会阻塞
-            $ret = stream_select($readFds, $writeFds, $expFds, null, null);
+            $ret = stream_select($readFds, $writeFds, $exptFds, null, null);
             if ($ret <= 0 || $ret === false) {
                 return false;
             }
 
             if ($readFds) {
                 $this->recv4socket();
+            }
+
+            if ($writeFds) {
+                $this->write2socket();
             }
 
             return true;
@@ -118,13 +173,15 @@ class Client
 
     public function handleMessage(): void
     {
-        while ($this->_protocol->len($this->_recvBuffer)) {
-            $msgLen            = $this->_protocol->msgLen($this->_recvBuffer);
+        while ($this->_protocol->Len($this->_recvBuffer)) {
+            $msgLen = $this->_protocol->msgLen($this->_recvBuffer);
+            //截取一条消息
             $oneMsg            = substr($this->_recvBuffer, 0, $msgLen);
             $this->_recvBuffer = substr($this->_recvBuffer, $msgLen);
+            $this->_recvLen    -= $msgLen;
 
-            $msg = $this->_protocol->decode($oneMsg);
-            $this->runEventCallBack('receive', [$msg]);
+            $message = $this->_protocol->decode($oneMsg);
+            $this->runEventCallBack("receive", [$message]);
         }
     }
 

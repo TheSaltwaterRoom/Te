@@ -40,7 +40,7 @@ class TcpConnection
 
             if ($data === '' || $data === false) {
                 if (feof($this->_socketFd) || !is_resource($this->_socketFd)) {
-                    $this->close();
+                    $this->onClose();
                 }
             } else {
                 $this->_recvLen    += strlen($data);
@@ -98,41 +98,40 @@ class TcpConnection
                 $this->_sendBufferFull++;
             }
         }
-
-        $writeLen = fwrite($this->_socketFd, $this->_sendBuffer, $this->_sendLen);
-
-        if ($this->_sendLen == $writeLen) {
-            $this->_sendLen        = 0;
-            $this->_sendBuffer     = '';
-            $this->_sendBufferFull = 0;
-
-            return true;
-        } elseif ($writeLen > 0) {
-            $this->_sendLen    -= $writeLen;
-            $this->_sendBuffer = substr($this->_sendBuffer, $writeLen);
-        } else {
-            $this->close();
-        }
     }
 
-    public function close()
+    public function onClose()
     {
         if (is_resource($this->_socketFd)) {
             fclose($this->_socketFd);
         }
-        /** @var Server $server */
         $server = $this->_server;
         $server->runEventCallBack('close', [$this]);
         $server->onClientLeave($this->_socketFd);
     }
 
-    public function write2socket($data)
+    public function needWrite()
     {
-        /** @var Server $server */
-        $server = $this->_server;
+        return $this->_sendLen > 0;
+    }
 
-        $bin      = $server->_protocol->encode($data);
-        $writeLen = fwrite($this->_socketFd, $bin[1], $bin[0]);
-        fprintf(STDOUT, "tcpConnection 我写了 %d 字节", $writeLen);
+    public function write2socket()
+    {
+        if ($this->needWrite()) {
+            $writeLen = fwrite($this->_socketFd, $this->_sendBuffer, $this->_sendLen);
+
+            if ($this->_sendLen == $writeLen) {
+                $this->_sendLen        = 0;
+                $this->_sendBuffer     = '';
+                $this->_sendBufferFull = 0;
+
+                return true;
+            } elseif ($writeLen > 0) {
+                $this->_sendLen    -= $writeLen;
+                $this->_sendBuffer = substr($this->_sendBuffer, $writeLen);
+            } else {
+                $this->onClose();
+            }
+        }
     }
 }
