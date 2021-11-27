@@ -1,43 +1,55 @@
 <?php
-
+/**
+ * Created by PhpStorm.
+ * User: Administrator
+ * Date: 2020/11/17 0017
+ * Time: 下午 8:46
+ */
 namespace Te;
 
-use Closure;
+use Te\Protocols\Stream;
 
 class Server
 {
-    public        $_mainSocket;
-    public        $_local_socket;
-    public static $_connections = [];
+
+    public $_mainSocket;
+    public $_local_socket;
+    static public $_connections = [];
 
     public $_events = [];
 
     public $_protocol = null;
     public $_protocol_layout;
 
-    static public $_clientNum = 0;//统计客户端连接数量
-    static public $_recvNum   = 0;//执行recv/fread调用次数
-    static public $_msgNum    = 0;//接收了多少条消息
+static public $_clientNum=0;//统计客户端连接数量
+static public $_recvNum=0;//执行recv/fread调用次数
+static public $_msgNum=0;//接收了多少条消息
 
-    public $_startTime = 0;
+    public $_startTime=0;
 
     public $_protocols = [
-        'stream' => 'Te\Protocols\Stream',
-        "text"   => "",
-        "ws"     => "",
-        "http"   => "",
-        "mqtt"   => "",
+        "stream"=>"Te\Protocols\Stream",
+        "text"=>"Te\Protocols\Text",
+        "ws"=>"",
+        "http"=>"",
+        "mqtt"=>""
     ];
+    public function on($eventName,$eventCall){
+        $this->_events[$eventName] = $eventCall;
+    }
 
     public function __construct($local_socket)
     {
-        [$protocols, $ip, $port] = explode(':', $local_socket);
-        if (isset($this->_protocols[$protocols])) {
-            $this->_protocol = new $this->_protocols[$protocols]();
+        list($protocol,$ip,$port) = explode(":",$local_socket);
+
+        if (isset($this->_protocols[$protocol])){
+
+            $this->_protocol = new $this->_protocols[$protocol]();
         }
         $this->_startTime = time();
 
-        $this->_local_socket = 'tcp:' . $ip . ':' . $port;
+        $this->_local_socket = "tcp:".$ip.":".$port;
+
     }
 
     public function onClientJoin()
@@ -45,10 +57,11 @@ class Server
         ++static::$_clientNum;
     }
 
-    public function onClientLeave($socketFd)
+
+    public function removeClient($sockfd)
     {
-        if (isset(static::$_connections[(int)$socketFd])) {
-            unset(static::$_connections[(int)$socketFd]);
+        if (isset(static::$_connections[(int)$sockfd])){
+            unset(static::$_connections[(int)$sockfd]);
             --static::$_clientNum;
         }
     }
@@ -57,137 +70,152 @@ class Server
     {
         ++static::$_recvNum;
     }
-
     public function onMsg()
     {
         ++static::$_msgNum;
-    }
 
+    }
     public function statistics()
     {
-        $nowTime          = time();
-        $diffTime         = $nowTime - $this->_startTime;
-        $this->_startTime = $nowTime;
-        if ($diffTime >= 1) {
-            fprintf(
-                STDOUT,
-                "time:<%s>--socket<%d>--<clientNum:%d>--<recvNum:%d>--<msgNum:%d>\r\n",
-                $diffTime,
-                (int)$this->_mainSocket,
-                static::$_clientNum,
-                static::$_recvNum,
-                static::$_msgNum
-            );
 
-            static::$_recvNum = 0;
-            static::$_msgNum  = 0;
+        $nowTime = time();
+        $diffTime = $nowTime-$this->_startTime;
+        $this->_startTime = $nowTime;
+        if ($diffTime>=1){
+
+            fprintf(STDOUT,"time:<%s>--socket<%d>--<clientNum:%d>--<recvNum:%d>--<msgNum:%d>\r\n",
+                $diffTime,(int)$this->_mainSocket,static::$_clientNum,static::$_recvNum,static::$_msgNum);
+
+            static::$_recvNum=0;
+            static::$_msgNum=0;
         }
     }
-
-    public function on(string $eventName, Closure $eventCall)
+    public function Listen()
     {
-        $this->_events[$eventName] = $eventCall;
+        $flag = STREAM_SERVER_LISTEN|STREAM_SERVER_BIND;//tcp
+        $option['socket']['backlog'] = 102400;//epoll select[1024]
+        $context= stream_context_create($option);
+
+        $this->_mainSocket = stream_socket_server($this->_local_socket,$errno,$errstr,$flag,$context);
+        stream_set_blocking($this->_mainSocket,0);
+        if (!is_resource($this->_mainSocket)){
+
+            fprintf(STDOUT,"server create fail:%s\n",$errstr);
+            exit(0);
+        }
+        fprintf(STDOUT,"listen on:%s\n",$this->_local_socket);
+
     }
 
-    public function start()
+    public function Start()
     {
-        $this->listen();
+        $this->Listen();
         $this->eventLoop();
     }
 
-    public function listen()
+    public function checkHeartTime()
     {
-        $flags                       = STREAM_SERVER_LISTEN | STREAM_SERVER_BIND;
-        $option['socket']['backlog'] = 102400;//epoll有用，select 【1024】
-        $context                     = stream_context_create($option);
-        //监听队列
-        $this->_mainSocket = stream_socket_server($this->_local_socket, $errno, $errStr, $flags, $context);
 
-        if (!is_resource($this->_mainSocket)) {
-            fprintf(STDOUT, "server create fail %s\n", $errStr);
-            exit(0);
+        foreach (static::$_connections as $idx=>$connection){
+
+            if ($connection->checkHeartTime()){
+                $connection->Close();
+            }
+
         }
-
-        fprintf(STDOUT, "listen on:%s\r\n", $this->_local_socket);
     }
-
-
     public function eventLoop()
     {
         $readFds[] = $this->_mainSocket;
 
+        while (1){
 
-        while (1) {
-            $reads    = $readFds;
-            $writeFds = [];
-            $expFds   = [];
+            $reads = $readFds;
+            $writes = [];
+            $expts = [];
+
+
             $this->statistics();
 
-            if (!empty(self::$_connections)) {
-                /**
-                 * @var               $idx
-                 * @var TcpConnection $tcpConnection
-                 */
-                foreach (static::$_connections as $idx => $tcpConnection) {
-                    $sockfd = $tcpConnection->getSocketFd();
-                    if (is_resource($sockfd)) {
-                        $reads[]    = $sockfd;
-                        $writeFds[] = $sockfd;
+            //$this->checkHeartTime();
+
+            if (!empty(static::$_connections)){
+
+                //也会导致重复
+                foreach (static::$_connections as $idx=>$connection){
+                    $sockfd = $connection->socketfd();
+                    if (is_resource($sockfd)){
+                        $reads[] = $sockfd;
+                       // $writes[] = $sockfd;
                     }
+
                 }
             }
-            set_error_handler(function () {
-            });
-            //null 会阻塞
-            $ret = stream_select($reads, $writeFds, $expFds, null, null);
+
+            //print_r($reads);
+            //print_r($writes);
+            set_error_handler(function (){});
+            $ret = stream_select($reads,$writes,$expts,0,100);
             restore_error_handler();
-            if ($ret === false) {
+
+            if ($ret===FALSE){
                 break;
             }
 
-            if ($reads) {
+            if ($reads){
                 foreach ($reads as $fd) {
-                    if ($fd == $this->_mainSocket) {
+                    if ($fd==$this->_mainSocket){
                         $this->Accept();
-                    } else {
+                    }else{
                         /** @var TcpConnection $connection */
-                        if (isset(static::$_connections[(int)$fd])) {
+                        if (isset(static::$_connections[(int)$fd])){
                             $connection = static::$_connections[(int)$fd];
-                            $connection->recv4socket();
+                            if ($connection->isConnected()) {
+                                $connection->recv4socket();
+                            }
                         }
+
                     }
+
                 }
+
             }
-            if ($writeFds) {
-                foreach ($writeFds as $fd) {
-                    if (isset(static::$_connections[(int)$fd])) {
+            if ($writes){
+                foreach ($writes as $fd) {
+
+                    if (isset(static::$_connections[(int)$fd])){
                         /** @var TcpConnection $connection */
                         $connection = static::$_connections[(int)$fd];
-                        $connection->write2socket();
+                        if ($connection->isConnected()){
+                            $connection->write2socket();
+                        }
+
                     }
+
                 }
+
             }
         }
+
     }
 
-    public function runEventCallBack($eventName, $args = [])
+    public function runEventCallBack($eventName,$args=[])
     {
-        if (isset($this->_events[$eventName]) && is_callable($this->_events[$eventName])) {
-            $this->_events[$eventName]($this, ...$args);
+        if (isset($this->_events[$eventName])&&is_callable($this->_events[$eventName])){
+            $this->_events[$eventName]($this,...$args);
         }
     }
-
-    public function accept()
+    public function Accept()
     {
-        $connfd = stream_socket_accept($this->_mainSocket, -1, $peername);
 
-        if (is_resource($this->_mainSocket)) {
-            $tcpConnection                      = new TcpConnection($connfd, $peername, $this);
-            static::$_connections[(int)$connfd] = $tcpConnection;
+        //从内核监听队列去获取连接
+        //连接socket 我们要关注的是读写事件【就是数据收发】
+        $connfd = stream_socket_accept($this->_mainSocket,-1,$peername);
+        if (is_resource($this->_mainSocket)){
+            $connection = new TcpConnection($connfd,$peername,$this);
             $this->onClientJoin();
-            $this->runEventCallBack('connect', [$tcpConnection]);
+            static::$_connections[(int)$connfd] = $connection;
+            $this->runEventCallBack("connect",[$connection]);
         }
     }
-
-
 }

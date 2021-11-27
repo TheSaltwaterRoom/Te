@@ -1,71 +1,51 @@
 <?php
-
+/**
+ * Created by PhpStorm.
+ * User: Administrator
+ * Date: 2020/11/19 0019
+ * Time: 下午 10:00
+ */
 namespace Te\Protocols;
 
 class Stream implements Protocol
 {
-
-    /**
-     * 用于检测数据是否完整
-     *
-     * @param $data
-     *
-     * @return bool
-     */
-    public function len($data)
+    //用来检测一条消息是否完整
+    public function Len($data)
     {
-        $dataStrLen = strlen($data);
-        if ($dataStrLen < 4) {
+      //pack/unpack
+        if (strlen($data)<4){
             return false;
         }
-
-        $tmp = unpack('NtotalLen', $data);
-
-        if ($dataStrLen < $tmp['totalLen']) {
+        $tmp = unpack("NtotalLen",$data);
+        //目前接收到数据包总长度还是小于指定的长度【消息不完整】
+        if (strlen($data)<$tmp['totalLen']){
             return false;
         }
-
         return true;
     }
 
-    /**
-     * @param   string  $data
-     *
-     * @return mixed
-     */
-    public function encode($data = '')
+    public function encode($data='')
     {
-        //+6是预定义的，4个字节存长度
-        $totalLen = strlen($data) + 6;
-        $bin      = pack('Nn', $totalLen, '1') . $data;
-
-        return [$totalLen, $bin];
+        //封包|拆包【需要有一个字段来表示数据包的长度，一条消息的完整设计协议时必须能知道数据包的长度】
+        //给大家演示打包好的这个二进制数据在内存长啥样？？？【php调试就很麻烦，php-fpm debug xdebug cli 】
+        $totalLen = strlen($data)+6;
+        //11|1|104 101 108 108 111 0
+        $bin = pack("Nn",$totalLen,"1").$data;
+        return [$totalLen,$bin];
     }
 
-    /**
-     * @param   string  $data
-     *
-     * @return false|string
-     */
-    public function decode($data = '')
+    public function decode($data='')
     {
-        $cmd = substr($data, 4, 2);
-        $msg = substr($data, 6);
 
+        $cmd = substr($data,4,2);
+        $msg = substr($data,6);
         return $msg;
     }
 
-    /**
-     * 返回一条数据的总长度
-     *
-     * @param   string  $data
-     *
-     * @return mixed
-     */
-    public function msgLen($data = '')
+    //返回一条消息的总长度
+    public function msgLen($data='')
     {
-        $tmp = unpack('Nlength', $data);
-
+        $tmp = unpack("Nlength",$data);
         return $tmp['length'];
     }
 }
