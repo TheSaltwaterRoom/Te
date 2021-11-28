@@ -7,6 +7,8 @@
  */
 namespace Te;
 
+use Te\Event\Epoll;
+use Te\Event\Event;
 use Te\Protocols\Stream;
 
 class Server
@@ -17,6 +19,8 @@ class Server
     static public $_connections = [];
 
     public $_events = [];
+
+static public $_eventLoop;
 
     public $_protocol = null;
     public $_protocol_layout;
@@ -49,6 +53,8 @@ static public $_msgNum=0;//接收了多少条消息
         $this->_startTime = time();
 
         $this->_local_socket = "tcp:".$ip.":".$port;
+
+        static::$_eventLoop = new Epoll();
 
     }
 
@@ -110,6 +116,7 @@ static public $_msgNum=0;//接收了多少条消息
     public function Start()
     {
         $this->Listen();
+        static::$_eventLoop->add($this->_mainSocket,Event::EV_READ,[$this,"Accept"]);
         $this->eventLoop();
     }
 
@@ -125,6 +132,11 @@ static public $_msgNum=0;//接收了多少条消息
         }
     }
     public function eventLoop()
+    {
+
+        echo "loop result:".static::$_eventLoop->loop();
+    }
+    public function loop()
     {
         $readFds[] = $this->_mainSocket;
 
@@ -146,7 +158,7 @@ static public $_msgNum=0;//接收了多少条消息
                     $sockfd = $connection->socketfd();
                     if (is_resource($sockfd)){
                         $reads[] = $sockfd;
-                       // $writes[] = $sockfd;
+                        $writes[] = $sockfd;
                     }
 
                 }
@@ -216,6 +228,8 @@ static public $_msgNum=0;//接收了多少条消息
             $this->onClientJoin();
             static::$_connections[(int)$connfd] = $connection;
             $this->runEventCallBack("connect",[$connection]);
+            echo "接收到客户端连接了\r\n";
+            print_r($connfd);
         }
     }
 }
