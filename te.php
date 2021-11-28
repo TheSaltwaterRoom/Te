@@ -17,7 +17,7 @@ require_once "vendor/autoload.php";
 ini_set("memory_limit","2048M");
 
 
-$server = new \Te\Server("stream://127.0.0.1:12345");
+$server = new \Te\Server("tcp://0.0.0.0:4567");
 
 $server->on("connect",function (\Te\Server $server,\Te\TcpConnection $connection){
 
@@ -26,7 +26,7 @@ $server->on("connect",function (\Te\Server $server,\Te\TcpConnection $connection
 //fread
 $server->on("receive",function (\Te\Server $server,$msg,\Te\TcpConnection $connection){
 
-    //fprintf(STDOUT,"recv from client<%d>:%s\r\n",(int)$connection->socketfd(),$msg);
+    fprintf(STDOUT,"recv from client<%d>:%s\r\n",(int)$connection->socketfd(),$msg);
     $connection->send("i am server".time());
 });
 $server->on("receiveBufferFull",function (\Te\Server $server,\Te\TcpConnection $connection){
